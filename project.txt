@@ -1,0 +1,71 @@
+{'Records': [{'eventID': 'dae38fbddd27123ddc3a4f78f0b5f292', 'eventName': 'INSERT', 'eventVersion': '1.1', 'eventSource': 'aws:dynamodb', 'awsRegion': 'us-east-1', 'dynamodb': {'ApproximateCreationDateTime': 1715010475.0, 'Keys': {'resturant_id_user_id ': {'S': 'A#1'}}, 'NewImage': {'created_at': {'S': '2023-05-09'}, 'resturant_id_user_id ': {'S': 'A#1'}}, 'SequenceNumber': '12500000000088569535296', 'SizeBytes': 68, 'StreamViewType': 'NEW_AND_OLD_IMAGES'}, 'eventSourceARN': 'arn:aws:dynamodb:us-east-1:339712844320:table/favouriteresturants/stream/2024-05-06T15:30:04.167'}]}
+
+
+Practical:
+--------------------
+Table 1:favouriteresturants--resturant_id_user_id 
+Table 2:aggregatedfavourite--resturant_id
+
+Lambda Code:
+----------------------------
+import json
+import boto3
+import time
+client = boto3.client('dynamodb')
+
+def lambda_handler(event, context):
+    TODO implement
+    print(event)
+    for i in event['Records']:
+        ddb = i['dynamodb']  
+        resturant_id=(ddb['Keys']['resturant_id_user_id']['S']).split('#')[0]
+        print("The resturant_id is : ",resturant_id)
+        response = client.query(
+        TableName='aggregatedfavourite',
+        KeyConditionExpression='resturant_id  = :resturant_id',
+        ExpressionAttributeValues={
+        ':resturant_id': {'S': resturant_id}
+        },ScanIndexForward = False, Limit = 1)
+        
+        if(response['Count']==0):
+            print("The resturant is becoming favourite for the first time")
+            response=client.put_item( TableName='aggregatedfavourite',Item={'resturant_id':{'S':resturant_id},'favourite_count':{'N':'1'}}) 
+        else:
+            previous_counter=int(response['Items'][0]['favourite_count']['N'])
+            if (i['eventName'] =='REMOVE'):
+                new_counter=previous_counter-1
+            else:
+                new_counter=previous_counter+1
+            response = client.update_item(
+                TableName='aggregatedfavourite',
+            Key={
+            'resturant_id': {'S':f'{resturant_id}'}
+            },
+            UpdateExpression='SET favourite_count = :favourite_count',
+            ExpressionAttributeValues={
+            ':favourite_count': {'N': f'{new_counter}'}
+            }
+            )    
+            
+    return {
+    'statusCode': 200,
+    'body': json.dumps('Hello from Lambda!')
+    }
+
+PartiQL Queries:
+---------------------------
+INSERT INTO "favouriteresturants" value {'resturant_id_user_id' : 'A#1','created_at' : '2023-05-09' }
+INSERT INTO "favouriteresturants" value {'resturant_id_user_id' :  'B#4','created_at' : '2022-12-18' }
+INSERT INTO "favouriteresturants" value {'resturant_id_user_id' :  'B#3','created_at' : '2022-12-18' }
+INSERT INTO "favouriteresturants" value {'resturant_id_user_id' :  'B#2','created_at' : '2022-12-18' }
+
+DELETE FROM "favouriteresturants" WHERE "resturant_id_user_id" = 'B#3'
+DELETE FROM "favouriteresturants" WHERE "resturant_id_user_id" = 'A#1'
+
+INSERT INTO "favouriteresturants" value {'resturant_id_user_id' :  'C#3','created_at' : '2021-02-09' }
+INSERT INTO "favouriteresturants" value {'resturant_id_user_id' :  'e#4','created_at' : '2023-06-10' }
+INSERT INTO "favouriteresturants" value {'resturant_id_user_id' :  'f#8','created_at' : '2023-06-10' }
+
+INSERT INTO "favouriteresturants" value {'resturant_id_user_id' :  'f#9','created_at' : '2023-06-10' }
+
+DELETE FROM "favouriteresturants" WHERE "resturant_id_user_id" = 'f#9'
